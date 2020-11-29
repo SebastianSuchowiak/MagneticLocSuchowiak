@@ -1,0 +1,13 @@
+name = "MagneticLocSuchowiak"
+uuid = "c4fd6ee0-f54b-4af6-8cc2-47c2c74b3bab"
+authors = ["SebastianSuchowiak <suchowiak.sebastian@gmail.com> and contributors"]
+version = "0.1.0"
+
+[compat]
+julia = "1"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
