@@ -1,21 +1,17 @@
-function readdatafromdirs(dirs; columns_to_get=[], addTags::Bool = true)
+function readdata(paths::Array{String, 1}; columns_to_get=[], add_tag::Bool = true)
     formated_data = DataFrame(reshape([], 0, length(columns_to_get)))
-    names!(formated_data, columns_to_get)
+    rename!(formated_data, columns_to_get)
 
-    for dir in dirs
-        files = readdir(dir, join = true)
-
-        for file in files
-            formated_data =
-                vcat(formated_data, readdatafromfile(file, columns_to_get, addTags))
-        end
+    for file in paths
+        formated_data =
+            vcat(formated_data, readdata(file, columns_to_get=columns_to_get, add_tag=add_tag))
     end
 
     return formated_data
 end
 
 
-function readdatafromfile(path; columns_to_get=[], add_tag::Bool = true)
+function readdata(path::String; columns_to_get::Array=[], add_tag::Bool = true)
     df = readdatafromcsv(path)
     meta = getmetadata(df)
     data = getdatawithoutmeta(df)
@@ -110,7 +106,7 @@ function createtagcolumns(path, data)
     tag = match(r"(.*[/\\])*(?<id>.*)_(?<sample>.*)\.txt", path)
     result = DataFrame(
         path_id = repeat([tag[:id]], n_rows),
-        path_sample = repeat([tag[:sample]], n_rows),
+        path_sample = repeat([tag[:sample]], n_rows)
     )
 end
 
