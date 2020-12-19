@@ -2,6 +2,7 @@ using DataFrames
 using MLJ
 using MagneticLocSuchowiak
 using Plots
+@load RandomForestRegressor pkg=DecisionTree
 
 function getdata()
     DATA_PATH = "C:/Users/Sebastian/PracaInz/data"
@@ -36,14 +37,14 @@ function getdata()
         :timestep,
         :magnetometr_x,
         :magnetometr_y,
-        :magnetometr_z,
+
         :lon,
         :lat,
         :path_id,
         :path_sample,
     ]
     TEST_COLUMNS =
-        [:timestep, :magnetometr_x, :magnetometr_y, :magnetometr_z, :lon, :lat, :path_id]
+        [:timestep, :magnetometr_x, :magnetometr_y,  :lon, :lat, :path_id]
     traindf = readdata(train_files, columns_to_get = TRAIN_COLUMNS, samplestocut = 3)
     testdf = readdata(test_files, columns_to_get = TEST_COLUMNS)
 
@@ -66,19 +67,43 @@ end
 
 traindf, testdf, standardizer = getdata()
 
-lon, lat = fitknn(traindf, klower = 50, kupper = 51)
-lon, lat = fitforest(traindf)
+lon, lat = fitknn(traindf, klower = 1, kupper = 5)
+lon, lat = fitforest(
+    traindf,
+    ntrees = [50, 100, 300],
+    maxdepths = [-1, 50, 100, 200],
+    minleafs = [10, 20, 50, 100],
+)
 lon, lat = fitnusvr(traindf)
 
-
-
-println(testmachines(lon, lat, testdf, standardizer))
-msummary(lon, lat, traindf, testdf, standardizer)
+msummary(lat, lon, traindf, testdf, standardizer)
 
 pathid = "tt03"
 plotpathcomparison(pathid, testdf, lat, lon)
 pathid = "l1n"
 plottrain(pathid, traindf, lon, lat)
+
+function foresterror()
+    train_mean = []
+    test_mean = []
+    for i in 1:300
+        lon, lat = fitcustommodel(traindf, RandomForestRegressor(n_trees=i))
+
+        results_train = testmachines(lon, lat, traindf, standardizer)
+        push!(train_mean, results_train["mean"])
+
+        results_test = testmachines(lon, lat, testdf, standardizer)
+        push!(test_mean, results_test["mean"])
+    end
+    plot(
+        1:300,
+        [train_mean, test_mean],
+        label = ["test" "train"],
+        title = "Mean Distance Error",
+        ylabel = "s=[m]",
+        xlabel = "n_trees",
+    )
+end
 
 function knnkerror(traindf, standardizer)
     knn = @load KNNRegressor
