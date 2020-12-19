@@ -1,17 +1,17 @@
-function readdata(paths::Array{String, 1}; columns_to_get=[], add_tag::Bool = true)
-    formated_data = DataFrame(reshape([], 0, length(columns_to_get)))
+function readdata(paths::Array{String, 1}; columns_to_get=[], add_tag::Bool = true, samplestocut::Int = 3)
+    formated_data = DataFrame(reshape([], 0, length(columns_to_get)), :auto)
     rename!(formated_data, columns_to_get)
 
     for file in paths
         formated_data =
-            vcat(formated_data, readdata(file, columns_to_get=columns_to_get, add_tag=add_tag))
+            vcat(formated_data, readdata(file, columns_to_get=columns_to_get, add_tag=add_tag, samplestocut=samplestocut))
     end
 
     return formated_data
 end
 
 
-function readdata(path::String; columns_to_get::Array=[], add_tag::Bool = true)
+function readdata(path::String; columns_to_get::Array=[], add_tag::Bool = true, samplestocut::Int = 3)
     df = readdatafromcsv(path)
     meta = getmetadata(df)
     data = getdatawithoutmeta(df)
@@ -24,7 +24,7 @@ function readdata(path::String; columns_to_get::Array=[], add_tag::Bool = true)
         data = hcat(data, tag_columns)
     end
 
-    data = cutoutliners(data)
+    data = cutoutliners(data, samplestocut)
     data[!, :timestep] = 0:nrow(data)-1
     data[!, :timestep] = data[!, :timestep] .* 0.1
 
@@ -104,14 +104,21 @@ end
 function createtagcolumns(path, data)
     n_rows = nrow(data)
     tag = match(r"(.*[/\\])*(?<id>.*)_(?<sample>.*)\.txt", path)
-    result = DataFrame(
-        path_id = repeat([tag[:id]], n_rows),
-        path_sample = repeat([tag[:sample]], n_rows)
-    )
+    if !isnothing(tag)
+        return  DataFrame(
+            path_id = repeat([tag[:id]], n_rows),
+            path_sample = repeat([tag[:sample]], n_rows)
+        )
+    else
+        tag = match(r"(.*[/\\])*(?<pathid>.*)\.txt", path)
+        return DataFrame(
+            path_id = repeat([tag[:pathid]], n_rows)
+        )
+    end
 end
 
 
-function cutoutliners(data)
-    data = data[setdiff(1:end, 1:3), :]
-    data = data[setdiff(1:end, end-3:end), :]
+function cutoutliners(data, samplestocut)
+    data = data[setdiff(1:end, 1:samplestocut), :]
+    data = data[setdiff(1:end, end-samplestocut:end), :]
 end

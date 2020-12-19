@@ -1,23 +1,20 @@
+__precompile__(false)
+
 module MagneticLocSuchowiak
 
-using PyPlot
+using Plots
 using DataFrames
 using CSV
-using GLM
 using MLJ
-using MLJModels
-using NearestNeighbors
-using StableRNGs
-using Printf
 using Distances
-using Plots
-using DecisionTree
-using EvoTrees
-using GLM
-using LIBSVM
-using ScikitLearn
-using LightGBM
-using MLJLinearModels
+using Statistics
+
+@load XGBoostRegressor
+@load NeuralNetworkRegressor
+@load KNNRegressor
+@load NuSVR
+@load RandomForestRegressor pkg=DecisionTree
+#@load LGBMRegressor
 
 
 include("graphs.jl")
@@ -25,6 +22,6 @@ include("datareader.jl")
 include("models.jl")
 
 
-export createfullgraph, createcomparisongraphs, readdata, fitandmean!
+export createfullgraph, createcomparisongraphs, readdata, fitknn, testmachines, fitforest, fitnusvr, fitcustommodel
 
 end
