@@ -19,11 +19,10 @@ function fitknn(traindf; klower::Int = 1, kupper::Int = 20)
     doublefit(knnm, traindf)
 end
 
-function fitnusvr(traindf)
+function fitnusvr(traindf, nuvalues, gammavalues)
     folds = getfolds(traindf)
-    r_tolerance = range(nusvr, :tolerance; values = [10e6])
-    r_gamma = range(nusvr, :gamma; values = [0.1])
-    r_nu = range(nusvr, :nu, values = [0.5, 1])
+    r_gamma = range(nusvr, :gamma; values = gammavalues)
+    r_nu = range(nusvr, :nu, values = nuvalues)
 
     nusvrm = TunedModel(
         model = nusvr,

@@ -2,10 +2,9 @@ using DataFrames
 using MLJ
 using MagneticLocSuchowiak
 using Plots
-@load RandomForestRegressor pkg=DecisionTree
 
 function getdata()
-    DATA_PATH = "C:/Users/Sebastian/PracaInz/data"
+    DATA_PATH = "/home/sebastian/Desktop/PracaInz/data"
     CURVES = DATA_PATH * "/curves"
     LINES = DATA_PATH * "/lines"
     train_dirs = vcat(readdir(LINES, join = true), readdir(CURVES, join = true))
@@ -52,7 +51,6 @@ function getdata()
     coordinates = coerce(coordinates, :lon => Continuous, :lat => Continuous)
     coordinatesstand = fit!(machine(Standardizer(), coordinates))
     traindf[!, [:lon, :lat]] = MLJ.transform(coordinatesstand, traindf[!, [:lon, :lat]])
-    println(minimum(traindf[!, :lat]))
     testdf[!, [:lon, :lat]] = MLJ.transform(coordinatesstand, testdf[!, [:lon, :lat]])
 
     return traindf, testdf, coordinatesstand
@@ -71,12 +69,14 @@ lon, lat = fitknn(traindf, klower = 1, kupper = 5)
 lon, lat = fitforest(
     traindf,
     ntrees = [50, 100, 300],
-    maxdepths = [-1, 50, 100, 200],
-    minleafs = [10, 20, 50, 100],
+    maxdepths = [-1, 50, 100],
+    minleafs = [5, 10, 20, 50, 100],
 )
-lon, lat = fitnusvr(traindf)
+lon, lat = fitnusvr(traindf, [0.3, 0.31], [0.1])
 
 msummary(lat, lon, traindf, testdf, standardizer)
+
+svmerror(traindf, standardizer)
 
 pathid = "tt03"
 plotpathcomparison(pathid, testdf, lat, lon)
@@ -103,6 +103,22 @@ function foresterror()
         ylabel = "s=[m]",
         xlabel = "n_trees",
     )
+end
+
+function svmerror(traindf, standardizer)
+    train_mean = []
+    test_mean = []
+    nus = 0.1:0.1:0.9
+    for i in nus
+        lon, lat = fitcustommodel(traindf, NuSVR(nu=i))
+
+        results_train = testmachines(lon, lat, traindf, standardizer)
+        push!(train_mean, results_train["mean"])
+
+        results_test = testmachines(lon, lat, testdf, standardizer)
+        push!(test_mean, results_test["mean"])
+    end
+    plot(length(nus), [train_mean, test_mean], label=["test" "train"], title="Mean Distance Error", ylabel="s=[m]", xlabel="k")
 end
 
 function knnkerror(traindf, standardizer)
@@ -233,7 +249,7 @@ function plottrain(pathid, traindf, mlon, mlat)
         ylabel = "Standarized Latitude",
     )
 
-    display(plot(lonplot, latplot, lonlatplot), layout=grid(3,1))
+    display(plot(lonplot, latplot, lonlatplot, layout=grid(3,1)))
 end
 
 path1 = traindf[.&(traindf[!, :path_id] .== "l3n", traindf[!, :path_sample] .== "01"), :]
