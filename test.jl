@@ -36,14 +36,14 @@ function getdata()
         :timestep,
         :magnetometr_x,
         :magnetometr_y,
-
+        :magnetometr_z,
         :lon,
         :lat,
         :path_id,
         :path_sample,
     ]
     TEST_COLUMNS =
-        [:timestep, :magnetometr_x, :magnetometr_y,  :lon, :lat, :path_id]
+        [:timestep, :magnetometr_x, :magnetometr_y, :magnetometr_z,  :lon, :lat, :path_id]
     traindf = readdata(train_files, columns_to_get = TRAIN_COLUMNS, samplestocut = 3)
     testdf = readdata(test_files, columns_to_get = TEST_COLUMNS)
 
@@ -52,6 +52,17 @@ function getdata()
     coordinatesstand = fit!(machine(Standardizer(), coordinates))
     traindf[!, [:lon, :lat]] = MLJ.transform(coordinatesstand, traindf[!, [:lon, :lat]])
     testdf[!, [:lon, :lat]] = MLJ.transform(coordinatesstand, testdf[!, [:lon, :lat]])
+
+    # magcols = [:magnetometr_x, :magnetometr_y, :magnetometr_z]
+    # mag_test = testdf[:, magcols]
+    # mag_test = coerce(mag_test, :magnetometr_x => Continuous, :magnetometr_y => Continuous, :magnetometr_z => Continuous)
+    # mag_test_stand = fit!(machine(Standardizer(), mag_test))
+    # testdf[!, magcols] = MLJ.transform(mag_test_stand, testdf[!, magcols])
+    #
+    # mag_train =traindf[:, magcols]
+    # mag_train = coerce(mag_train, :magnetometr_x => Continuous, :magnetometr_y => Continuous, :magnetometr_z => Continuous)
+    # mag_train_stand = fit!(machine(Standardizer(), mag_train))
+    # traindf[!, magcols] = MLJ.transform(mag_train_stand, traindf[!, magcols])
 
     return traindf, testdf, coordinatesstand
 end
@@ -64,24 +75,57 @@ function msummary(lat, lon, traindf, testdf, coordinatesstand)
 end
 
 traindf, testdf, standardizer = getdata()
+testdf = traindf[traindf[:, :path_sample].=="05", :]
+traindf = traindf[.!(traindf[:, :path_sample].=="05"), :]
 
-lon, lat = fitknn(traindf, klower = 1, kupper = 5)
+
+lon, lat = fitknn(traindf, klower = 50, kupper = 51)
 lon, lat = fitforest(
     traindf,
-    ntrees = [50, 100, 300],
-    maxdepths = [-1, 50, 100],
-    minleafs = [5, 10, 20, 50, 100],
+    ntrees = [100],
+    maxdepths = [50],
+    minleafs = [50, 100],
 )
-lon, lat = fitnusvr(traindf, [0.3, 0.31], [0.1])
+lon, lat = fitnusvr(traindf, [0.1, 0.2, 0.3], [0.5, 1])
 
 msummary(lat, lon, traindf, testdf, standardizer)
 
-svmerror(traindf, standardizer)
+svmnuerror(traindf, standardizer)
+svmgammaerror(traindf, standardizer)
+knnkerror(traindf, standardizer)
+
+ids = string.("tt", vcat(string.("0", 1:9), ["10", "11"]))
+println("\n++++++++++++")
+for id in ids
+    path = testdf[testdf[:, :path_id].==id, :]
+    testresult = testmachines(lon, lat, path, standardizer)
+    print(id*" "*string(testresult["mean"])*"\n")
+end
+println("++++++++++++")
 
 pathid = "tt03"
 plotpathcomparison(pathid, testdf, lat, lon)
 pathid = "l1n"
 plottrain(pathid, traindf, lon, lat)
+
+
+println("\n++++++++++++")
+for id in ids
+    path = testdf[testdf[:, :path_id].==id, :]
+
+    realtestdf = MLJ.copy(path)
+    realtestdf[!, [:lon, :lat]] =
+        MLJ.inverse_transform(standardizer, realtestdf[!, [:lon, :lat]])
+    meanlat = mean(realtestdf.lat)
+    meanlon = mean(realtestdf.lon)
+    naivepred = [(meanlon, meanlat) for i = 1:nrow(realtestdf)]
+    ytest = collect(zip(realtestdf[:, :lon], realtestdf[:, :lat]))
+    testresult = MagneticLocSuchowiak.evaluateresults(ytest, naivepred)
+
+    print(id*" "*string(testresult["mean"])*"\n")
+end
+println("++++++++++++")
+
 
 function foresterror()
     train_mean = []
@@ -105,12 +149,12 @@ function foresterror()
     )
 end
 
-function svmerror(traindf, standardizer)
+function svmnuerror(traindf, standardizer)
     train_mean = []
     test_mean = []
     nus = 0.1:0.1:0.9
     for i in nus
-        lon, lat = fitcustommodel(traindf, NuSVR(nu=i))
+        lon, lat = fitcustommodel(traindf, NuSVR(gamma=0.1, nu=i))
 
         results_train = testmachines(lon, lat, traindf, standardizer)
         push!(train_mean, results_train["mean"])
@@ -118,14 +162,32 @@ function svmerror(traindf, standardizer)
         results_test = testmachines(lon, lat, testdf, standardizer)
         push!(test_mean, results_test["mean"])
     end
-    plot(length(nus), [train_mean, test_mean], label=["test" "train"], title="Mean Distance Error", ylabel="s=[m]", xlabel="k")
+    display(plot(nus, [train_mean, test_mean], label=["train" "test"], title="Błąd w zależności od nu", ylabel="s=[m]", xlabel="nu"))
+    savefig("svm_nu.png")
+end
+
+function svmgammaerror(traindf, standardizer)
+    train_mean = []
+    test_mean = []
+    gammas = [0.1, 0.5, 1, 3, 5, 7, 10, 15]
+    for i in gammas
+        lon, lat = fitcustommodel(traindf, NuSVR(nu=0.1, gamma=i))
+
+        results_train = testmachines(lon, lat, traindf, standardizer)
+        push!(train_mean, results_train["mean"])
+
+        results_test = testmachines(lon, lat, testdf, standardizer)
+        push!(test_mean, results_test["mean"])
+    end
+    display(plot(gammas, [train_mean, test_mean], label=["train" "test"], title="Bląd w zależności od gamma", ylabel="s=[m]", xlabel="gamma"))
+    savefig("svm_gamma.png")
 end
 
 function knnkerror(traindf, standardizer)
-    knn = @load KNNRegressor
     train_mean = []
     test_mean = []
-    for i in 1:300
+    ks = vcat(1:20, 21:10:200)
+    for i in ks
         lon, lat = fitcustommodel(traindf, KNNRegressor(K=i))
 
         results_train = testmachines(lon, lat, traindf, standardizer)
@@ -134,7 +196,8 @@ function knnkerror(traindf, standardizer)
         results_test = testmachines(lon, lat, testdf, standardizer)
         push!(test_mean, results_test["mean"])
     end
-    plot(1:300, [train_mean[201:500], test_mean[201:500]], label=["test" "train"], title="Mean Distance Error", ylabel="s=[m]", xlabel="k")
+    plot(ks, [train_mean, test_mean], label=["train" "test"], title="Błąd w zależności od k", ylabel="s=[m]", xlabel="k")
+    savefig("knn_k.png")
 end
 
 function plotpathcomparison(testpathfile, testdf, lat, lon)
@@ -334,16 +397,3 @@ p3=plot(
     label = ["train" "train" "train" "train" "train" "test"],
 )
 plot(p1,p2,p3, layout=grid(3,1), size=(900, 1200), xlabel = "t = [s]", title = ["magnetometr_x" "magnetometr_y" "magnetometr_z"])
-plot([1:166], [singlesample.magnetometr_x, snip.magnetometr_x], w = 3)
-plot([1:166], [singlesample.magnetometr_y, snip.magnetometr_y], w = 3)
-plot([1:166], [singlesample.magnetometr_z, snip.magnetometr_z], w = 3)
-
-
-realtestdf = MLJ.copy(testdf)
-realtestdf[!, [:lon, :lat]] =
-    MLJ.inverse_transform(standardizer, realtestdf[!, [:lon, :lat]])
-meanlat = mean(realtestdf.lat)
-meanlon = mean(realtestdf.lon)
-naivepred = [(meanlon, meanlat) for i = 1:nrow(realtestdf)]
-ytest = collect(zip(realtestdf[:, :lon], realtestdf[:, :lat]))
-println(MagneticLocSuchowiak.evaluateresults(ytest, naivepred))
